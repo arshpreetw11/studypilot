@@ -81,7 +81,7 @@ async def generate(
 
 def _models() -> list[str]:
     primary = model_name()
-    fallback = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
+    fallback = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
     return [primary] if not fallback or fallback == primary else [primary, fallback]
 
 
