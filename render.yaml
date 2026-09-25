@@ -1,0 +1,12 @@
+# One-click deploy on Render (free tier): New + > Blueprint > pick this repo
+services:
+  - type: web
+    name: studypilot
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false # paste your key from https://aistudio.google.com/apikey
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
