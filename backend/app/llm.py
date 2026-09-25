@@ -72,6 +72,9 @@ async def generate(
         body["systemInstruction"] = {"parts": [{"text": system}]}
     if json_mode:
         body["generationConfig"]["responseMimeType"] = "application/json"
+    if "2.5-flash" in model_name():
+        # skip "thinking" on Flash: these tasks don't need it and it roughly halves latency
+        body["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
