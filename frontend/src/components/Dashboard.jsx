@@ -55,7 +55,7 @@ export default function Dashboard({ state, today, busy, onToggle, onReplan, onQu
 
   const stripDays = useMemo(() => {
     const start = days.findIndex((d) => d.date >= addDays(today, -2))
-    return start < 0 ? [] : days.slice(start, start + 14)
+    return start < 0 ? [] : days.slice(start, start + 28)
   }, [days, today])
 
   const dayHours = (d) => d.tasks.filter((t) => t.type !== 'exam').reduce((a, t) => a + t.hours, 0)
