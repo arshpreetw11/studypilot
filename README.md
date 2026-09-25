@@ -4,7 +4,7 @@
 
 **Theme:** AI with Education · **Stack:** FastAPI · React (Vite) · Google Gemini · Docker
 
-**Live demo:** `<add your Render URL>` · **Demo video:** `<add your video link>`
+**Live demo:** https://studypilot-z4i1.onrender.com (free tier: first load can take ~50s) · **Demo video:** `<add your video link>`
 
 ![Dashboard](docs/media/dashboard.png)
 

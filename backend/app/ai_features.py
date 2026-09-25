@@ -175,7 +175,8 @@ async def parse_syllabus(text: str, today: date | None = None) -> tuple[list[dic
 Extract every subject and its study topics from the syllabus below.
 
 Rules:
-- Split big units into study-sized topics (roughly 1-4 hours each). Keep the syllabus order.
+- Use ONLY topics that appear in the syllabus text. Never add topics that are not mentioned.
+- Keep each listed topic as one item; split a topic only if it clearly bundles several big ideas (aim for 1-4 hours each). Keep the syllabus order.
 - difficulty: 1 = easy/recall, 2 = moderate, 3 = hard (proofs, heavy maths, problem solving).
 - hours: realistic first-pass self-study time for an average student (0.5 to 8).
 - exam_date: ISO YYYY-MM-DD if the text mentions it (assume the next occurrence after today), else null.
