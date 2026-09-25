@@ -57,13 +57,36 @@ async def generate(
     system: str | None = None,
     json_mode: bool = False,
     temperature: float = 0.4,
-    timeout: float = 45.0,
+    timeout: float = 20.0,
 ) -> Any:
-    """Call Gemini and return text (or parsed JSON when json_mode=True)."""
+    """Call Gemini and return text (or parsed JSON when json_mode=True).
+
+    Free-tier Gemini occasionally stalls or returns 429/5xx, so each call tries the
+    primary model, then a lighter fallback model, each with a short timeout.
+    """
     key = api_key()
     if not key:
         raise LLMError("GEMINI_API_KEY is not set")
 
+    last_error: LLMError | None = None
+    for model in _models():
+        try:
+            text = await _call(model, key, prompt, system, json_mode, temperature, timeout)
+            return _extract_json(text) if json_mode else text.strip()
+        except (LLMError, ValueError) as e:  # ValueError: model returned invalid JSON
+            log.warning("Gemini model %s failed: %s", model, e)
+            last_error = e if isinstance(e, LLMError) else LLMError(f"Invalid JSON from {model}")
+    raise last_error or LLMError("No Gemini model available")
+
+
+def _models() -> list[str]:
+    primary = model_name()
+    fallback = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
+    return [primary] if not fallback or fallback == primary else [primary, fallback]
+
+
+async def _call(model: str, key: str, prompt: str, system: str | None, json_mode: bool,
+                temperature: float, timeout: float) -> str:
     body: dict[str, Any] = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": temperature},
@@ -72,19 +95,19 @@ async def generate(
         body["systemInstruction"] = {"parts": [{"text": system}]}
     if json_mode:
         body["generationConfig"]["responseMimeType"] = "application/json"
-    if "2.5-flash" in model_name():
-        # skip "thinking" on Flash: these tasks don't need it and it roughly halves latency
+    if "2.5-flash" in model:
+        # skip "thinking" on Flash models: these tasks don't need it and it cuts latency a lot
         body["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.post(
-                GEMINI_URL.format(model=model_name()),
+                GEMINI_BASE + f"/v1beta/models/{model}:generateContent",
                 headers={"x-goog-api-key": key, "Content-Type": "application/json"},
                 json=body,
             )
     except httpx.HTTPError as e:
-        raise LLMError(f"Network error calling Gemini: {e}") from e
+        raise LLMError(f"Network error calling Gemini: {type(e).__name__} {e}") from e
 
     if r.status_code != 200:
         log.warning("Gemini error %s: %s", r.status_code, r.text[:300])
@@ -96,5 +119,7 @@ async def generate(
         text = "".join(p.get("text", "") for p in parts)
     except (KeyError, IndexError) as e:
         raise LLMError("Unexpected Gemini response shape") from e
+    if not text.strip():
+        raise LLMError("Empty Gemini response")
+    return text
 
-    return _extract_json(text) if json_mode else text.strip()

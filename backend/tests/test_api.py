@@ -121,3 +121,20 @@ def test_ai_failure_falls_back(monkeypatch):
 def test_split_respects_parentheses():
     subs = heuristic_parse("DSA\n- Graph Algorithms (BFS, DFS, Dijkstra)\nUnit 2: Normalization (1NF, BCNF), SQL", date(2026, 9, 25))
     assert [t["name"] for t in subs[0]["topics"]] == ["Graph Algorithms (BFS, DFS, Dijkstra)", "Normalization (1NF, BCNF)", "SQL"]
+
+
+def test_llm_falls_back_to_second_model(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "backup-model")
+    tried = []
+
+    async def fake_call(model, *a, **k):
+        tried.append(model)
+        if model != "backup-model":
+            raise llm.LLMError("timeout")
+        return '{"ok": true}'
+
+    monkeypatch.setattr(llm, "_call", fake_call)
+    assert asyncio.run(llm.generate("hi", json_mode=True)) == {"ok": True}
+    assert tried == [llm.model_name(), "backup-model"]

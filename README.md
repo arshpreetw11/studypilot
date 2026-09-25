@@ -94,7 +94,7 @@ docker run -p 8000:8000 -e GEMINI_API_KEY=your_key_here studypilot   # http://lo
 ## Tests
 
 ```bash
-cd backend && pytest -q     # 21 tests: scheduler invariants, parser, API, AI-path sanitising & fallbacks
+cd backend && pytest -q     # 22 tests: scheduler invariants, parser, API, AI-path sanitising & fallbacks
 ```
 
 CI runs backend tests and the frontend build on every push (`.github/workflows/ci.yml`).
