@@ -28,6 +28,7 @@ REVIEW_HOURS = 0.5
 REVIEW_OFFSETS = [1, 3, 7, 14]
 MASTERED = 0.85
 REVISION_HOURS = 2.0
+LEARN_SHARE = 0.55  # fraction of free study time assumed available for new material (rest: reviews)
 
 
 def _floor_chunk(x: float) -> float:
@@ -153,6 +154,41 @@ def build_plan(req: PlanRequest) -> PlanResponse:
 
     reviews: list[_Review] = []
 
+    free_prefix = [0.0]  # study hours left after reserved revision blocks
+    for c, r in zip(capacity, reserved):
+        free_prefix.append(free_prefix[-1] + max(0.0, c - r))
+
+    def _active(i: int) -> list:
+        return sorted(
+            (s for s in valid_subjects
+             if exam_idx[s.name] > i and sum(tp.remaining for tp in queues[s.name]) > 0),
+            key=lambda s: exam_idx[s.name],
+        )
+
+    def _at_risk(i: int, cap_today: float) -> bool:
+        """Is any exam's cumulative new material >= the learning capacity left before it?
+        (~75% of free time; the rest is for spaced reviews)"""
+        cum = 0.0
+        for s in _active(i):
+            e = exam_idx[s.name]
+            cum += sum(tp.remaining for tp in queues[s.name])
+            if cum >= LEARN_SHARE * (cap_today + free_prefix[e] - free_prefix[i + 1]):
+                return True
+        return False
+
+    def _pick_subject(i: int, cap_today: float) -> str | None:
+        active = _active(i)
+        if not active:
+            return None
+        if _at_risk(i, cap_today):  # earliest deadline first, so nothing is left unscheduled
+            return active[0].name
+        # otherwise interleave by urgency: remaining hours / study days left
+        return max(
+            active,
+            key=lambda s: (sum(tp.remaining for tp in queues[s.name]) / max(1, study_days_between(i, exam_idx[s.name])),
+                           -exam_idx[s.name]),
+        ).name
+
     def enqueue_reviews(tp: _Topic, learned_idx: int) -> None:
         for k, off in enumerate(REVIEW_OFFSETS[: tp.reviews]):
             label = f"weak-topic boost #{k + 1}" if tp.weak else f"spaced review #{k + 1}"
@@ -172,7 +208,12 @@ def build_plan(req: PlanRequest) -> PlanResponse:
         # 3a. due reviews (drop ones whose exam has passed; carry the rest over)
         reviews = [r for r in reviews if exam_idx[r.subject] > i]
         due = sorted((r for r in reviews if r.due <= i), key=lambda r: (exam_idx[r.subject], r.due))
-        review_budget = cap if not learn_pending else max(CHUNK, _floor_chunk(cap * 0.5))
+        if not learn_pending:
+            review_budget = cap
+        elif _at_risk(i, cap):  # crunch: new material first, keep one review slot
+            review_budget = CHUNK
+        else:
+            review_budget = max(CHUNK, _floor_chunk(cap * 0.5))
         placed_reviews = set()
         for r in due:
             if cap < REVIEW_HOURS or review_budget < REVIEW_HOURS:
@@ -186,19 +227,9 @@ def build_plan(req: PlanRequest) -> PlanResponse:
             review_budget -= REVIEW_HOURS
             reviews.remove(r)
 
-        # 3b. learning, interleaved by urgency
+        # 3b. learning, interleaved by urgency; earliest-deadline-first when an exam is at risk
         while cap >= CHUNK:
-            best, best_score = None, -1.0
-            for s in valid_subjects:
-                e = exam_idx[s.name]
-                if e <= i:
-                    continue
-                rem = sum(tp.remaining for tp in queues[s.name])
-                if rem <= 0:
-                    continue
-                score = rem / max(1, study_days_between(i, e))
-                if score > best_score + 1e-9:
-                    best, best_score = s.name, score
+            best = _pick_subject(i, cap)
             if best is None:
                 break
             tp = next(tp for tp in queues[best] if tp.remaining > 0)

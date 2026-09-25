@@ -121,3 +121,17 @@ def test_review_labels_distinguish_weak_topics():
     notes = {(t.topic, t.note) for t in all_tasks(build_plan(req([s]))) if t.type == "review"}
     assert all(n.startswith("weak-topic") for tp, n in notes if tp == "Weak")
     assert all(n.startswith("spaced review") for tp, n in notes if tp == "Fine")
+
+
+def test_front_loaded_first_exam_fits_when_capacity_allows():
+    """Regression: a heavy first exam used to be squeezed by interleaving with later subjects."""
+    start = date(2026, 9, 25)
+    def s(name, days, hours):
+        return Subject(name=name, exam_date=start + timedelta(days=days),
+                       topics=[Topic(name=f"{name}{i}", hours=h, difficulty=3 if h >= 5 else 2) for i, h in enumerate(hours)])
+    subjects = [s("DSA", 14, [4, 5, 6, 7, 8]), s("DBMS", 18, [3, 4, 5, 4, 6]), s("OS", 22, [4, 3, 4, 4, 5, 4])]
+    left = []
+    for h in (5.5, 6, 6.5, 7, 8):
+        p = build_plan(PlanRequest(subjects=subjects, start_date=start, hours_per_day=h, rest_weekdays=[6]))
+        left.append(sum(x.unscheduled_hours for x in p.summaries))
+    assert left == [0, 0, 0, 0, 0]
