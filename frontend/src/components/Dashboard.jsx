@@ -29,7 +29,13 @@ export default function Dashboard({ state, today, busy, onToggle, onReplan, onQu
     let cancelled = false
     setCoach(null)
     api
-      .coach({ plan: state.plan, today, completed_task_ids: Object.keys(state.done), weak_topics: stats.weakTopics })
+      // days before the last replan were already carried forward, so the coach shouldn't count them as missed
+      .coach({
+        plan: { ...state.plan, days: state.plan.days.filter((d) => d.date >= (state.replannedOn || '')) },
+        today,
+        completed_task_ids: Object.keys(state.done),
+        weak_topics: stats.weakTopics,
+      })
       .then((r) => !cancelled && setCoach(r))
       .catch(() => !cancelled && setCoach({ message: 'Coach unavailable right now.', source: 'offline' }))
     return () => {
